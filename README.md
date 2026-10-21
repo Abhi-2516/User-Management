@@ -238,12 +238,10 @@ The deployment uses a single Vercel project configuration (`vercel.json`):
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "rewrites": [
     {
-      "source": "/api/:path*",
+      "source": "/api/(.*)",
       "destination": "/api/index.js"
     },
     {
