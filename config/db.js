@@ -1,7 +1,10 @@
 const mongoose = require('mongoose');
 
+let cachedPromise = null;
+
 /**
  * Connect to MongoDB instance using Mongoose.
+ * Reuses existing connection in serverless environments (e.g. Vercel Functions).
  * @param {string} [uri] - Optional MongoDB URI (defaults to process.env.MONGODB_URI)
  * @returns {Promise<typeof mongoose>}
  */
@@ -14,11 +17,28 @@ const connectDB = async (uri) => {
     throw new Error(errorMsg);
   }
 
+  // If already connected, reuse connection
+  if (mongoose.connection.readyState === 1) {
+    return mongoose;
+  }
+
+  // If connection is in progress, await the cached promise
+  if (cachedPromise) {
+    return cachedPromise;
+  }
+
   try {
-    const conn = await mongoose.connect(connectionString);
+    cachedPromise = mongoose.connect(connectionString, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+
+    const conn = await cachedPromise;
     console.log(`[Database] MongoDB connected successfully: ${conn.connection.host}`);
     return conn;
   } catch (error) {
+    cachedPromise = null;
     console.error(`[Database Error] Failed to connect to MongoDB: ${error.message}`);
     throw error;
   }
@@ -31,6 +51,7 @@ const connectDB = async (uri) => {
  */
 const disconnectDB = async () => {
   try {
+    cachedPromise = null;
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
       console.log('[Database] MongoDB disconnected cleanly');
@@ -45,3 +66,4 @@ module.exports = {
   connectDB,
   disconnectDB
 };
+

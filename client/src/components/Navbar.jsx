@@ -82,7 +82,7 @@ export default function Navbar() {
               title={
                 status === 'connected'
                   ? `Backend operational (${latency !== null ? `${latency}ms latency` : 'Active'})`
-                  : 'Backend unreachable on http://localhost:5000'
+                  : 'Backend service is unreachable'
               }
             >
               <span className="relative flex h-2 w-2">

@@ -87,7 +87,7 @@ export default function Footer() {
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              API Health: Port 5000
+              API Health: /api/health
             </span>
           </div>
         </div>

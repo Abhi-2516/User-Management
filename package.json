@@ -5,9 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "build": "npm run build --prefix client",
+    "build:client": "npm run build --prefix client",
     "dev:server": "nodemon server.js",
     "dev:client": "npm run dev --prefix client",
-    "build:client": "npm run build --prefix client",
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:client\"",
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },

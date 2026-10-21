@@ -306,7 +306,7 @@ export default function Home() {
                     <div className="pt-1 flex items-center justify-between text-xs text-slate-500">
                       <span className="flex items-center gap-1.5">
                         <Server className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Port 5000 REST API</span>
+                        <span>Express 5 REST API</span>
                       </span>
                       <Link
                         to="/dashboard"

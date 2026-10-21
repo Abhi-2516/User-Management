@@ -39,6 +39,20 @@ app.get('/', (req, res) => {
   });
 });
 
+// Direct discovery endpoint at /api
+app.get('/api', (req, res) => {
+  res.status(200).json({
+    success: true,
+    name: 'UserFlow API',
+    version: '1.0.0',
+    message: 'User Management REST API is operational',
+    endpoints: {
+      health: '/api/health',
+      users: '/api/users'
+    }
+  });
+});
+
 // Mount User Management routes
 app.use('/api/users', userRoutes);
 

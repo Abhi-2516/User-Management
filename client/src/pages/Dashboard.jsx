@@ -262,7 +262,7 @@ export default function Dashboard() {
                       : 'Checking'
                   }
                   subtitle={
-                    latency !== null ? `${latency}ms latency to Port 5000` : 'Health Endpoint'
+                    latency !== null ? `${latency}ms latency` : 'Health Endpoint'
                   }
                   icon={Activity}
                   colorScheme={backendStatus === 'connected' ? 'emerald' : 'rose'}
@@ -411,7 +411,7 @@ export default function Dashboard() {
                     <span className={`w-3 h-3 rounded-full ${backendStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                     <span className="font-bold text-slate-900 capitalize">{backendStatus}</span>
                   </div>
-                  <p className="text-xs text-slate-600">Base URL: http://localhost:5000</p>
+                  <p className="text-xs text-slate-600">Endpoint: /api/health</p>
                   {latency !== null && <p className="text-xs text-slate-600">Ping: {latency} ms</p>}
                 </div>
 

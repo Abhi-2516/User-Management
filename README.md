@@ -1,6 +1,6 @@
 # UserFlow — Full-Stack User Management System
 
-A modern, production-ready Full-Stack User Management application built with a **Node.js & Express REST API**, **MongoDB & Mongoose**, and a **React 18 + Vite + Tailwind CSS** frontend dashboard.
+A modern, production-ready Full-Stack User Management application built with a **Node.js & Express REST API**, **MongoDB Atlas & Mongoose**, and a **React 18 + Vite + Tailwind CSS** frontend dashboard.
 
 This system provides complete end-to-end CRUD (Create, Read, Update, Delete) functionality with strict request validation, database-level uniqueness enforcement, bcrypt password hashing, zero password exposure, real-time health telemetry, and an automated integration test suite.
 
@@ -15,10 +15,15 @@ This system provides complete end-to-end CRUD (Create, Read, Update, Delete) fun
 - [Architecture & Request Lifecycle](#architecture--request-lifecycle)
 - [Technology Stack](#technology-stack)
 - [Project Folder Structure](#project-folder-structure)
+- [Vercel Full-Stack Deployment Guide](#vercel-full-stack-deployment-guide)
+  - [Single-Domain Architecture](#single-domain-architecture)
+  - [Step-by-Step Vercel Deployment](#step-by-step-vercel-deployment)
+  - [Required Environment Variables](#required-environment-variables)
+  - [MongoDB Atlas Network Configuration](#mongodb-atlas-network-configuration)
 - [Prerequisites](#prerequisites)
-- [Installation & Setup](#installation--setup)
+- [Installation & Local Setup](#installation--local-setup)
 - [Environment Configuration](#environment-configuration)
-- [Running the Application](#running-the-application)
+- [Running the Application Locally](#running-the-application-locally)
 - [Running Automated Tests](#running-automated-tests)
 - [API Endpoints & Contracts](#api-endpoints--contracts)
   - [HTTP Status Codes](#http-status-codes)
@@ -34,11 +39,13 @@ This system provides complete end-to-end CRUD (Create, Read, Update, Delete) fun
 
 ## Project Overview
 
-**UserFlow** was transformed from a standalone REST API into a polished full-stack software system. It connects directly to MongoDB Atlas or a local MongoDB instance, strictly through an Express 5 REST API layer. No database credentials or raw database queries are ever exposed to the client browser.
+**UserFlow** connects directly to MongoDB Atlas or a local MongoDB instance through an Express 5 REST API layer. In production on Vercel, the frontend and backend share a **single public domain**, completely eliminating CORS friction and preventing database credentials from ever leaking to the browser.
 
 Key highlights:
-- **Zero Mock Data in Production**: All records displayed in the dashboard are fetched in real-time from MongoDB via the REST API.
-- **Enterprise-Grade Security**: Passwords are encrypted using 10 bcrypt salt rounds before database persistence. Raw passwords and hashes are omitted from all JSON responses.
+- **Zero Mock Data**: All dashboard records are fetched in real-time from MongoDB via the REST API.
+- **Single-Domain Vercel Architecture**: Static assets are served from Vercel's global CDN while `/api/*` requests route transparently to a serverless Express function (`api/index.js`).
+- **Serverless Database Caching**: Mongoose connections are cached across warm serverless function invocations to prevent connection leaks and Atlas pool exhaustion.
+- **Enterprise-Grade Security**: Passwords are encrypted with 10 bcrypt salt rounds before persistence. Passwords and hashes are omitted from all JSON responses and transforms.
 - **Resilient UI States**: Features dedicated loading skeletons, search filtering, client-side pagination, sorting, live health telemetry, duplicate email conflict handling, and permanent deletion confirmation dialogs.
 
 ---
@@ -47,7 +54,7 @@ Key highlights:
 
 ### Landing Page (`/`)
 - **Navigation Bar**: Product logo (**UserFlow**), Home, Features, API Documentation anchors, and an **"Open Dashboard"** CTA button.
-- **Live Health Status Pill**: Actively pings `GET /api/health` to indicate whether the backend server is reachable on port 5000, displaying operational status and latency.
+- **Live Health Status Pill**: Actively pings `GET /api/health` to indicate backend connectivity, latency, and uptime.
 - **Hero Section**:
   - Headline: *"Manage Users. Simplify Everything."*
   - Supporting text: *"A clean, reliable user management platform powered by a REST API, Express.js, and MongoDB."*
@@ -103,33 +110,32 @@ Key highlights:
 
 ```mermaid
 flowchart TD
-    subgraph Frontend["React 18 + Vite Client (Port 5173)"]
-        UI[Landing Page & Dashboard UI]
-        APIClient[Centralized API Client\n(client/src/services/api.js)]
-        Toast[Toast & Error Notification System]
-        UI --> APIClient
+    subgraph SingleDomain["Single Public Domain (e.g. userflow.vercel.app)"]
+        Browser[User Browser]
+        VercelRouter{Vercel Edge Router\nvercel.json}
+        
+        Browser -->|Request| VercelRouter
+        
+        VercelRouter -->|Static Assets\n/assets/*, /index.html| CDN[Vercel Global CDN\nclient/dist]
+        VercelRouter -->|SPA Deep Links\n/, /dashboard| CDN
+        VercelRouter -->|API Calls\n/api/*| ServerlessFunc[Vercel Serverless Function\napi/index.js]
     end
 
-    subgraph Backend["Express 5 REST API (Port 5000)"]
-        Security[Helmet & CORS Middleware]
-        Parser[Express JSON Parser]
-        Router[User Routes /api/users]
-        Validator[express-validator Middleware]
-        Controller[User Controller]
-        Model[Mongoose User Model\n(bcrypt pre-save hook)]
-        ErrorHandler[Centralized Error Handler]
-
-        APIClient -->|HTTP Requests| Security
-        Security --> Parser --> Router --> Validator
-        Validator -->|Valid| Controller --> Model
-        Validator -.->|Invalid (400)| ErrorHandler
-        Controller -.->|Conflict (409) / Error| ErrorHandler
-        ErrorHandler -->|Safe JSON Error| Toast
+    subgraph BackendEngine["Express Backend & Mongoose"]
+        ServerlessFunc --> DBCheck{Cached DB\nConnection?}
+        DBCheck -->|No| MongoConnect[Connect to MongoDB Atlas\n(maxPoolSize: 10)]
+        DBCheck -->|Yes| ExpressApp[Express 5 App\napp.js]
+        MongoConnect --> ExpressApp
+        
+        ExpressApp --> Security[Helmet & CORS]
+        Security --> Router[userRoutes]
+        Router --> Validator[express-validator]
+        Validator --> Controller[userController]
+        Controller --> UserModel[Mongoose User Model\n(bcrypt pre-save)]
     end
 
-    subgraph Database["MongoDB Database"]
-        Atlas[(MongoDB Atlas / Local DB)]
-        Model -->|Mongoose Queries| Atlas
+    subgraph DatabaseCloud["Cloud Database"]
+        UserModel -->|Mongoose Queries| Atlas[(MongoDB Atlas Cloud)]
     end
 ```
 
@@ -146,14 +152,14 @@ flowchart TD
 | **Routing** | React Router DOM | ^6.28.2 | Single-page application routing (`/`, `/dashboard`) |
 | **Backend Runtime** | Node.js | v24+ | Server-side JavaScript runtime environment |
 | **Web Framework** | Express.js | ^5.3.0 | RESTful API server |
-| **Database ODM** | Mongoose | ^9.11.2 | Schema definitions, validation, and hooks |
-| **Database** | MongoDB / Atlas | v7.x / 8.x | Document-oriented NoSQL database |
+| **Database ODM** | Mongoose | ^9.11.2 | Schema definitions, validation, and connection caching |
+| **Database** | MongoDB Atlas | v7.x / 8.x | Document-oriented cloud NoSQL database |
 | **Password Security** | bcryptjs | ^3.0.3 | 10-round salted cryptographic one-way hashing |
 | **Request Validation** | express-validator | ^7.3.2 | Declarative validation rules for bodies and params |
 | **HTTP Security** | Helmet & CORS | ^8.3.0 / ^2.8.6 | Secure HTTP headers and Cross-Origin control |
 | **Testing** | Jest & Supertest | ^30.5.2 / ^7.3.1 | Automated backend integration test suite (23 tests) |
 | **In-Memory Runner** | mongodb-memory-server | ^11.3.0 | Ephemeral MongoDB instance for isolated testing |
-| **Process Control** | Concurrently | ^9.1.2 | Runs backend and frontend simultaneously in dev |
+| **Deployment Platform**| Vercel | v2 Configuration | Unified static CDN + serverless function hosting |
 
 ---
 
@@ -161,8 +167,10 @@ flowchart TD
 
 ```
 user-management/
+├── api/
+│   └── index.js                     # Vercel serverless function entry point
 ├── config/
-│   └── db.js                        # MongoDB connection & disconnection lifecycle
+│   └── db.js                        # Cached MongoDB connection manager for serverless
 ├── controllers/
 │   └── userController.js            # Express handlers (Create, Read, Update, Delete)
 ├── middleware/
@@ -200,7 +208,7 @@ user-management/
 │   │   │   ├── Dashboard.jsx            # Full CRUD admin dashboard
 │   │   │   └── Home.jsx                 # Landing page with interactive API docs
 │   │   ├── services/
-│   │   │   └── api.js                   # Centralized API service with normalized errors
+│   │   │   └── api.js                   # Centralized API service with normalized relative requests
 │   │   ├── App.jsx                      # App root with routing & ToastProvider
 │   │   ├── index.css                    # Tailwind directives & design tokens
 │   │   └── main.jsx                     # Vite React entry point
@@ -208,17 +216,97 @@ user-management/
 │   ├── package.json                     # Client dependencies
 │   ├── postcss.config.js                # PostCSS configuration
 │   ├── tailwind.config.js               # Tailwind custom color palette
-│   ├── vite.config.js                   # Vite configuration
+│   ├── vite.config.js                   # Vite dev proxy configuration for /api
 │   ├── .env.example                     # Client environment template
-│   └── .env                             # Client environment variables
+│   └── .env                             # Client local environment variables
 ├── .env.example                     # Root backend environment template
-├── .env                             # Backend environment variables
+├── .env                             # Local backend environment variables (git-ignored)
 ├── .gitignore                       # Git exclusions (preserves .env.example)
 ├── app.js                           # Express application assembly
 ├── package.json                     # Root scripts and backend dependencies
 ├── README.md                        # Project documentation
-└── server.js                        # HTTP server listener and graceful shutdown
+├── server.js                        # Local Node HTTP server listener
+└── vercel.json                      # Vercel deployment & routing configuration
 ```
+
+---
+
+## Vercel Full-Stack Deployment Guide
+
+### Single-Domain Architecture
+The deployment uses a single Vercel project configuration (`vercel.json`):
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+- **Static Assets**: Vite compiles the frontend into `client/dist`. Vercel automatically deploys these assets to its global edge network.
+- **Client-Side Routing**: The negative-lookahead rewrite `/((?!api/).*)` routes all non-API requests (such as `/` and `/dashboard`) to `/index.html`, allowing React Router to handle page reloads without 404s.
+- **Serverless API**: Requests matching `/api/:path*` (such as `/api/health`, `/api/users`, `/api/users/:id`) execute the serverless function [`api/index.js`](file:///d:/Project/User%20Management/api/index.js).
+
+---
+
+### Step-by-Step Vercel Deployment
+
+1. **Commit and Push to GitHub**:
+   Ensure your local changes are committed and pushed to your GitHub repository:
+   ```bash
+   git add .
+   git commit -m "feat: configure full-stack Vercel deployment with serverless API and Vite SPA"
+   git push origin master
+   ```
+
+2. **Log into Vercel**:
+   Go to [vercel.com](https://vercel.com) and log in with your GitHub account.
+
+3. **Import Project**:
+   - Click **"Add New..."** &rarr; **"Project"**.
+   - Select your repository: **`Abhi-2516/User-Management`**.
+
+4. **Configure Project Settings in Vercel Dashboard**:
+   - **Framework Preset**: `Other` (or `Vite`)
+   - **Root Directory**: Leave as `./` (Project root)
+   - **Build & Development Settings**:
+     - *Build Command*: Leave default or set `npm run build`
+     - *Output Directory*: Leave default or set `client/dist` (Vercel automatically detects this from `vercel.json`)
+     - *Install Command*: Leave default (`npm install`) or set `npm install && npm install --prefix client`
+
+5. **Configure Environment Variables in Vercel**:
+   Under the **"Environment Variables"** section, add:
+
+   | Key | Value | Notes |
+   | :--- | :--- | :--- |
+   | `MONGODB_URI` | `mongodb+srv://<username>:<password>@cluster0.mongodb.net/user_management?retryWrites=true&w=majority` | Your MongoDB Atlas connection string |
+   | `NODE_ENV` | `production` | Enables production optimizations |
+
+   > **Note on Frontend API URL**: Do **NOT** set `VITE_API_BASE_URL` on Vercel. Leaving it empty enables the client to use relative same-origin paths (`/api/users`), which guarantees seamless communication without CORS.
+
+6. **Click "Deploy"**:
+   Vercel will install dependencies, build the Vite frontend, bundle the serverless Express function, and provide you with a live production URL (e.g., `https://user-management-xxx.vercel.app`).
+
+---
+
+### MongoDB Atlas Network Configuration
+
+Because Vercel Serverless Functions execute on dynamic IP addresses, you must whitelist all outbound IPs in MongoDB Atlas:
+1. Open the [MongoDB Atlas Dashboard](https://cloud.mongodb.com/).
+2. Navigate to **Security** &rarr; **Network Access**.
+3. Click **"Add IP Address"**.
+4. Click **"Allow Access from Anywhere"** (`0.0.0.0/0`).
+5. Click **"Confirm"**.
 
 ---
 
@@ -226,87 +314,62 @@ user-management/
 
 - **Node.js**: v18.x or v20+ (tested on v24.19.0)
 - **npm**: v9+ (tested on v11.17.0)
-- **MongoDB**: Local MongoDB instance (`mongodb://127.0.0.1:27017/user_management`) or a free MongoDB Atlas connection string.
+- **MongoDB**: Local MongoDB instance (`mongodb://127.0.0.1:27017/user_management`) or a MongoDB Atlas cluster URI.
 
 ---
 
-## Installation & Setup
+## Installation & Local Setup
 
 1. **Clone or navigate to the repository**:
    ```bash
    cd "d:/Project/User Management"
    ```
 
-2. **Install root backend dependencies**:
+2. **Install root and client dependencies**:
    ```bash
    npm install
-   ```
-
-3. **Install client frontend dependencies**:
-   ```bash
    npm install --prefix client
    ```
 
----
-
-## Environment Configuration
-
-### Backend Environment (`.env`)
-Create a `.env` file at the project root (see `.env.example`):
-```env
-# Server Configuration
-PORT=5000
-NODE_ENV=development
-
-# Database Configuration
-# Local MongoDB:
-MONGODB_URI=mongodb://127.0.0.1:27017/user_management
-
-# Or MongoDB Atlas:
-# MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/user_management?retryWrites=true&w=majority
-```
-
-### Frontend Environment (`client/.env`)
-Create a `client/.env` file in the `client/` directory (see `client/.env.example`):
-```env
-# Backend REST API base URL
-VITE_API_BASE_URL=http://localhost:5000
-```
+3. **Configure Local Environment Files**:
+   - Root `.env`:
+     ```env
+     PORT=5000
+     NODE_ENV=development
+     MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/user_management?retryWrites=true&w=majority
+     ```
+   - Client `client/.env`:
+     ```env
+     # Leave empty to use Vite proxy (forwards /api to localhost:5000)
+     VITE_API_BASE_URL=
+     ```
 
 ---
 
-## Running the Application
+## Running the Application Locally
 
-### Option A: Run Both Concurrently (Recommended)
-Runs both the Express backend (Port 5000) and the Vite frontend (Port 5173) simultaneously:
+### Run Both Simultaneously (Recommended)
 ```bash
 npm run dev
 ```
+- **Backend Express API**: `http://localhost:5000`
+- **Frontend Vite Client**: `http://localhost:5173` (with `/api` transparently proxied to port 5000)
 
-### Option B: Run Services Individually
+### Or Run Individually
 - **Backend Only**:
   ```bash
   npm run dev:server
   ```
-  *Server starts at `http://localhost:5000` with Nodemon auto-reload.*
-
 - **Frontend Only**:
   ```bash
   npm run dev:client
   ```
-  *Frontend starts at `http://localhost:5173` with Vite HMR.*
-
-### Option C: Build Frontend for Production
-```bash
-npm run build:client
-```
-*Outputs optimized production assets to `client/dist/`.*
 
 ---
 
 ## Running Automated Tests
 
-Run the comprehensive integration test suite with Jest:
+Run the full integration test suite with Jest:
 ```bash
 npm test
 ```
@@ -333,81 +396,27 @@ All **23 automated tests** pass cleanly with zero configuration needed, using an
 | `400` | **Bad Request** | Validation failure, malformed JSON, or invalid ObjectId |
 | `404` | **Not Found** | Target user ID does not exist or route is undefined |
 | `409` | **Conflict** | Attempted to register or update to an existing email address |
-| `500` | **Internal Server Error** | Unhandled server exception |
+| `500` | **Internal Server Error** | Database connection error or unhandled exception |
 
 ### Endpoints Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/` | API discovery and root welcome payload |
-| `GET` | `/api/health` | Health check endpoint returning status and timestamp |
+| `GET` | `/` | Serves React landing page (or root API JSON if requested with Accept: application/json) |
+| `GET` | `/api` | Root API discovery endpoint returning status and endpoints |
+| `GET` | `/api/health` | Health check endpoint returning status and ISO timestamp |
 | `POST` | `/api/users` | Creates a new user with bcrypt password hashing |
 | `GET` | `/api/users` | Retrieves all users sorted by `createdAt: -1` |
 | `GET` | `/api/users/:id` | Retrieves a single user record by MongoDB ID |
 | `PATCH` | `/api/users/:id` | Selectively updates `fullName`, `email`, or `password` |
 | `DELETE` | `/api/users/:id` | Permanently deletes a user by MongoDB ID |
 
-### Request & Response Samples
-
-#### 1. Create User
-- **Request**: `POST /api/users`
-  ```json
-  {
-    "fullName": "Rahul Sharma",
-    "email": "rahul.sharma@example.com",
-    "password": "SecurePassword123"
-  }
-  ```
-- **Response** (`201 Created`):
-  ```json
-  {
-    "success": true,
-    "message": "User created successfully",
-    "data": {
-      "id": "6701a2b3c4d5e6f7a8b9c0d1",
-      "fullName": "Rahul Sharma",
-      "email": "rahul.sharma@example.com",
-      "createdAt": "2026-10-21T14:00:00.000Z",
-      "updatedAt": "2026-10-21T14:00:00.000Z"
-    }
-  }
-  ```
-
-#### 2. Validation Failure
-- **Request**: `POST /api/users` with missing password or invalid email.
-- **Response** (`400 Bad Request`):
-  ```json
-  {
-    "success": false,
-    "message": "Validation failed",
-    "errors": [
-      {
-        "field": "email",
-        "message": "Please provide a valid email address"
-      },
-      {
-        "field": "password",
-        "message": "Password must be at least 6 characters long"
-      }
-    ]
-  }
-  ```
-
-#### 3. Duplicate Email Conflict
-- **Response** (`409 Conflict`):
-  ```json
-  {
-    "success": false,
-    "message": "A user with this email address already exists"
-  }
-  ```
-
 ---
 
 ## Security Considerations
 
 1. **Password Encryption**:
-   - Every password is processed with `bcryptjs` using 10 salt rounds inside Mongoose pre-save hooks.
+   - Every password is encrypted with `bcryptjs` using 10 salt rounds inside Mongoose pre-save hooks.
    - Plain text passwords exist in memory only during hashing and are never logged or stored.
 2. **Strict Zero Hash Exposure**:
    - The User schema defines `password: { select: false }`.
@@ -416,9 +425,9 @@ All **23 automated tests** pass cleanly with zero configuration needed, using an
 3. **HTTP Header Hardening**:
    - Helmet middleware applies `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, and removes `X-Powered-By`.
 4. **CORS Governance**:
-   - Configured to allow verified local development ports while disallowing unwanted origins.
+   - Configured to allow verified local development ports while permitting same-origin requests in production.
 5. **No Direct Database Access from Browser**:
-   - The React frontend communicates strictly with the Express REST API. MongoDB credentials and connection strings are isolated to the backend `.env`.
+   - The React frontend communicates strictly with the Express REST API. MongoDB credentials and connection strings are isolated to backend environment variables.
 
 ---
 
@@ -430,7 +439,9 @@ A complete Postman collection is included at:
 ### Importing & Running in Postman
 1. Open Postman.
 2. Click **Import** (top left) and choose `postman/User-Management-API.postman_collection.json`.
-3. Set the collection variable `baseUrl` to `http://localhost:5000`.
+3. Set the collection variable `baseUrl` to:
+   - For local testing: `http://localhost:5000`
+   - For deployed testing: `https://your-app.vercel.app`
 4. Run requests `01` through `13` sequentially or trigger the **Collection Runner**.
    - Request `02` automatically saves the generated user ID into the `{{userId}}` environment variable, enabling seamless execution of `GET`, `PATCH`, and `DELETE` without manual copying.
 
@@ -440,7 +451,7 @@ A complete Postman collection is included at:
 
 When presenting this project for an internship or technical interview, capture the following screenshots:
 
-- [ ] **`01_landing_page_hero.png`**: Landing page at `http://localhost:5173/` showing the brand "UserFlow", headline, and live "API Connected" status pill.
+- [ ] **`01_landing_page_hero.png`**: Landing page showing the brand "UserFlow", headline, and live "API Connected" status pill.
 - [ ] **`02_landing_page_api_docs.png`**: Interactive REST API documentation explorer on the landing page showing formatted request/response payloads.
 - [ ] **`03_dashboard_overview.png`**: Admin dashboard at `/dashboard` with real summary cards, search bar, and populated users table.
 - [ ] **`04_create_user_modal.png`**: "Add User" modal displaying input validation and required field indicators.
@@ -451,23 +462,23 @@ When presenting this project for an internship or technical interview, capture t
 - [ ] **`09_delete_confirmation_modal.png`**: Permanent delete confirmation dialog showing the target user's name and email.
 - [ ] **`10_empty_state.png`**: Zero-users or zero-search results empty state with clear calls to action.
 - [ ] **`11_automated_test_suite_passing.png`**: Terminal showing `npm test` with all 23 tests passing.
-- [ ] **`12_client_production_build.png`**: Terminal showing `npm run build:client` completing with 0 errors.
+- [ ] **`12_client_production_build.png`**: Terminal showing `npm run build` completing with 0 errors.
 
 ---
 
 ## Troubleshooting Common Issues
 
-### 1. `MONGODB_URI is not defined in environment variables`
-- **Cause**: The `.env` file does not exist or lacks `MONGODB_URI`.
-- **Solution**: Copy `.env.example` to `.env` and configure `MONGODB_URI`.
+### 1. `MongooseServerSelectionError: connection timed out` on Vercel
+- **Cause**: MongoDB Atlas has not whitelisted Vercel's IP addresses.
+- **Solution**: In MongoDB Atlas &rarr; Network Access, add `0.0.0.0/0` (Allow Access from Anywhere).
 
-### 2. Port 5000 Already in Use (`EADDRINUSE`)
-- **Cause**: A background process is occupying port 5000.
-- **Solution**: Kill the process using port 5000 or set `PORT=5001` in `.env` and update `VITE_API_BASE_URL` in `client/.env`.
+### 2. `MONGODB_URI is not defined in environment variables` on Vercel
+- **Cause**: The environment variable was not configured in the Vercel project settings.
+- **Solution**: Go to Vercel Project Settings &rarr; Environment Variables, add `MONGODB_URI`, and redeploy.
 
 ### 3. Frontend Shows "API Offline"
-- **Cause**: The Express server is not running or `VITE_API_BASE_URL` is pointing to the wrong port.
-- **Solution**: Verify `npm run dev:server` is running on port 5000 and click the refresh icon on the status pill.
+- **Cause**: Serverless function cold start timeout or database connection failure.
+- **Solution**: Check Vercel Function logs under the **"Logs"** tab to inspect the exact exception.
 
 ---
 
@@ -483,12 +494,10 @@ git status
 ### 2. Stage Changes & Commit
 ```bash
 git add .
-git commit -m "feat: complete full-stack user management system with React dashboard, landing page, and tests"
+git commit -m "feat: configure full-stack Vercel deployment with serverless API and Vite SPA"
 ```
 
 ### 3. Push to GitHub
 ```bash
-git branch -M main
-git remote add origin https://github.com/<your-username>/user-management-system.git
-git push -u origin main
+git push origin master
 ```

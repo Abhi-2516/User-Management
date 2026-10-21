@@ -19,7 +19,7 @@ export default function EmptyState({
           {title || 'Failed to Load User Records'}
         </h3>
         <p className="text-sm text-slate-600 max-w-md mx-auto mt-2 leading-relaxed">
-          {description || 'The REST API could not be reached or returned an error. Ensure the server is running on port 5000 and MongoDB is connected.'}
+          {description || 'The REST API could not be reached or returned an error. Ensure the backend server is running and MongoDB is connected.'}
         </p>
         {onAction && (
           <div className="mt-6">

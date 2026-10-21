@@ -3,7 +3,9 @@
  * Connects directly to the Express REST API.
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000').replace(/\/+$/, '');
+// In production or when VITE_API_BASE_URL is not set, use same-origin relative paths ('')
+// In local dev, Vite proxy forwards /api requests to Express at localhost:5000
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(message, status = 500, errors = [], rawData = null) {
@@ -20,7 +22,8 @@ export class ApiError extends Error {
  * Robust fetch wrapper with timeout, JSON formatting, and safe error handling.
  */
 async function request(endpoint, options = {}, timeoutMs = 12000) {
-  const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = API_BASE_URL ? `${API_BASE_URL}${cleanEndpoint}` : cleanEndpoint;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -82,9 +85,9 @@ async function request(endpoint, options = {}, timeoutMs = 12000) {
       );
     }
 
-    // Network connection errors (e.g. backend offline or CORS failure)
+    // Network connection errors (e.g. backend offline or DNS failure)
     throw new ApiError(
-      `Cannot connect to backend server at ${API_BASE_URL}. Ensure the Express server is running on port 5000.`,
+      'Cannot connect to the backend API. Please verify the server is running and reachable.',
       0,
       [],
       null

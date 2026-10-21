@@ -131,7 +131,7 @@ export default function Sidebar({
           }`}></span>
         </div>
         <p className="text-[11px] text-slate-600 leading-snug">
-          Express 5 REST API running on port 5000 with Mongoose ODM.
+          Express 5 REST API with Mongoose ODM & MongoDB Atlas.
         </p>
         <div className="pt-1 flex items-center gap-1 text-[11px] text-slate-600">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
