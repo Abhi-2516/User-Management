@@ -238,22 +238,29 @@ The deployment uses a single Vercel project configuration (`vercel.json`):
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build --prefix client",
   "outputDirectory": "client/dist",
   "rewrites": [
+    {
+      "source": "/api",
+      "destination": "/api/index.js"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api).*)",
       "destination": "/index.html"
     }
   ]
 }
 ```
+- **Framework Preset**: Explicitly set to `"framework": "vite"` to prevent Vercel from mistaking the repository for an Express backend service that expects compiled Node server files in the output directory.
 - **Static Assets**: Vite compiles the frontend into `client/dist`. Vercel automatically deploys these assets to its global edge network.
-- **Client-Side Routing**: The negative-lookahead rewrite `/((?!api/).*)` routes all non-API requests (such as `/` and `/dashboard`) to `/index.html`, allowing React Router to handle page reloads without 404s.
-- **Serverless API**: Requests matching `/api/:path*` (such as `/api/health`, `/api/users`, `/api/users/:id`) execute the serverless function [`api/index.js`](file:///d:/Project/User%20Management/api/index.js).
+- **Client-Side Routing**: The negative-lookahead rewrite `/((?!api).*)` routes all non-API requests (such as `/` and `/dashboard`) to `/index.html`, allowing React Router to handle page reloads without 404s.
+- **Serverless API**: Requests matching `/api` and `/api/(.*)` (such as `/api/health`, `/api/users`, `/api/users/:id`) execute the serverless function [`api/index.js`](file:///d:/Project/User%20Management/api/index.js).
 
 ---
 
@@ -275,12 +282,13 @@ The deployment uses a single Vercel project configuration (`vercel.json`):
    - Select your repository: **`Abhi-2516/User-Management`**.
 
 4. **Configure Project Settings in Vercel Dashboard**:
-   - **Framework Preset**: `Other` (or `Vite`)
-   - **Root Directory**: Leave as `./` (Project root)
+   - **Framework Preset**: **`Vite`** (or **`Other`**).
+     > **CRITICAL**: Do **NOT** select **Express** or **Services**. If Vercel auto-detected multiple applications and defaulted to the *Services* or *Express* preset, change the Framework Preset to **Vite** (or **Other**). The Express preset treats `outputDirectory` as compiled backend code and searches for `app.js`/`index.js`, which fails because `client/dist` contains static browser assets.
+   - **Root Directory**: Leave as `./` (Project root).
    - **Build & Development Settings**:
-     - *Build Command*: Leave default or set `npm run build`
-     - *Output Directory*: Leave default or set `client/dist` (Vercel automatically detects this from `vercel.json`)
-     - *Install Command*: Leave default (`npm install`) or set `npm install && npm install --prefix client`
+     - *Build Command*: `npm run build` (or leave default; specified in `vercel.json`)
+     - *Output Directory*: `client/dist` (auto-loaded from `vercel.json`)
+     - *Install Command*: Leave default (`npm install`)
 
 5. **Configure Environment Variables in Vercel**:
    Under the **"Environment Variables"** section, add:
@@ -477,6 +485,10 @@ When presenting this project for an internship or technical interview, capture t
 ### 3. Frontend Shows "API Offline"
 - **Cause**: Serverless function cold start timeout or database connection failure.
 - **Solution**: Check Vercel Function logs under the **"Logs"** tab to inspect the exact exception.
+
+### 4. `[BUILD_FAILED] No entrypoint found in output directory: "client/dist"`
+- **Cause**: Vercel detected `express` in root `package.json` and selected the **Services** or **Express** framework preset. An Express preset expects `outputDirectory` to contain a compiled backend server entry point (`app.js`, `index.js`, etc.), whereas `client/dist` contains static Vite React assets.
+- **Solution**: In Vercel Project Settings &rarr; **General** &rarr; **Framework Preset**, change the preset from **Express** / **Services** to **Vite** (or **Other**). Vercel will then treat `client/dist` as static frontend assets and deploy `api/index.js` as the serverless API.
 
 ---
 
